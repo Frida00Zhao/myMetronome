@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>专业乐器节拍器</title>
+    <style>
+        :root {
+            --primary-color: #007AFF;
+            --accent-color: #5856D6;
+            --bg-color: #f5f5f7;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: var(--bg-color);
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 2.5rem;
+            border-radius: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.08);
+            text-align: center;
+            width: 350px;
+        }
+
+        /* 顶部菜单栏 */
+        .menu-bar {
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            background: #eee;
+            padding: 5px;
+            border-radius: 12px;
+        }
+
+        .time-sig-btn {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: 0.2s;
+        }
+
+        .time-sig-btn.active {
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            color: var(--primary-color);
+        }
+
+        /* 速度显示与输入 */
+        .bpm-controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .bpm-input-wrapper {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        #bpmNumber {
+            width: 120px;
+            font-size: 4rem;
+            font-weight: 800;
+            border: none;
+            text-align: center;
+            color: #333;
+            background: transparent;
+            outline: none;
+        }
+
+        .bpm-label { font-size: 1.2rem; color: #888; }
+
+        /* 步进器按钮 */
+        .stepper {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-top: 10px;
+        }
+
+        .step-btn {
+            background: #e5e5ea;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        /* 视觉指示器 */
+        .indicator-container {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin: 20px 0;
+            height: 20px;
+        }
+
+        .dot {
+            width: 14px;
+            height: 14px;
+            background: #e0e0e0;
+            border-radius: 50%;
+            transition: all 0.1s;
+        }
+
+        .dot.active { background: var(--primary-color); transform: scale(1.4); }
+        .dot.accent-active { background: #ff9500; transform: scale(1.6); }
+
+        input[type="range"] { width: 100%; margin: 1.5rem 0; cursor: pointer; }
+
+        #startStop {
+            background-color: var(--primary-color);
+            color: white;
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        #startStop.running { background-color: #FF3B30; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="menu-bar">
+        <button class="time-sig-btn" data-beats="2">2/4</button>
+        <button class="time-sig-btn" data-beats="3">3/4</button>
+        <button class="time-sig-btn active" data-beats="4">4/4</button>
+        <button class="time-sig-btn" data-beats="3" data-sub="8">3/8</button>
+    </div>
+
+    <div class="bpm-controls">
+        <div class="bpm-input-wrapper">
+            <input type="number" id="bpmNumber" value="120" min="40" max="280">
+            <span class="bpm-label">BPM</span>
+        </div>
+        
+        <div class="stepper">
+            <div class="step-btn" onclick="adjustBPM(-1)">−</div>
+            <div class="step-btn" onclick="adjustBPM(1)">+</div>
+        </div>
+    </div>
+
+    <div class="indicator-container" id="indicatorContainer">
+        </div>
+
+    <input type="range" id="tempoSlider" min="40" max="280" value="120">
+
+    <button id="startStop">开始练习</button>
+</div>
+
+<script>
+    let audioCtx = null;
+    let isRunning = false;
+    let tempo = 120;
+    let beatsPerMeasure = 4;
+    let isEighthNoteBase = false; // 是否是八分音符为一拍(如3/8)
+    
+    let currentBeat = 0;
+    let nextNoteTime = 0.0;
+    let timerID = null;
+
+    const startStopBtn = document.getElementById('startStop');
+    const tempoSlider = document.getElementById('tempoSlider');
+    const bpmNumberInput = document.getElementById('bpmNumber');
+    const indicatorContainer = document.getElementById('indicatorContainer');
+
+    // 初始化圆点
+    function createDots() {
+        indicatorContainer.innerHTML = '';
+        for (let i = 0; i < beatsPerMeasure; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'dot';
+            indicatorContainer.appendChild(dot);
+        }
+    }
+    createDots();
+
+    function initAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function scheduleNote(beatNumber, time) {
+        const osc = audioCtx.createOscillator();
+        const envelope = audioCtx.createGain();
+
+        // 强拍(第一拍)和弱拍音调区分
+        const isFirstBeat = beatNumber % beatsPerMeasure === 0;
+        osc.frequency.value = isFirstBeat ? 1200 : 800;
+        
+        envelope.gain.setValueAtTime(1, time);
+        envelope.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+
+        osc.connect(envelope);
+        envelope.connect(audioCtx.destination);
+
+        osc.start(time);
+        osc.stop(time + 0.1);
+
+        const drawTime = (time - audioCtx.currentTime) * 1000;
+        setTimeout(() => updateUI(beatNumber, isFirstBeat), drawTime);
+    }
+
+    function scheduler() {
+        while (nextNoteTime < audioCtx.currentTime + 0.1) {
+            scheduleNote(currentBeat, nextNoteTime);
+            advanceNote();
+        }
+        timerID = setTimeout(scheduler, 25);
+    }
+
+    function advanceNote() {
+        // 如果是 3/8 拍，速度感通常比 3/4 拍快一倍
+        const multiplier = isEighthNoteBase ? 0.5 : 1.0;
+        const secondsPerBeat = (60.0 / tempo) * multiplier;
+        nextNoteTime += secondsPerBeat;
+        currentBeat = (currentBeat + 1) % beatsPerMeasure;
+    }
+
+    function updateUI(beatIndex, isFirstBeat) {
+        const dots = document.querySelectorAll('.dot');
+        dots.forEach((dot, i) => {
+            dot.className = 'dot';
+            if (i === beatIndex % beatsPerMeasure) {
+                dot.classList.add('active');
+                if (isFirstBeat) dot.classList.add('accent-active');
+            }
+        });
+    }
+
+    // 交互逻辑
+    function updateTempo(value) {
+        tempo = Math.max(40, Math.min(280, value));
+        bpmNumberInput.value = tempo;
+        tempoSlider.value = tempo;
+    }
+
+    window.adjustBPM = (delta) => updateTempo(parseInt(tempo) + delta);
+
+    bpmNumberInput.addEventListener('change', (e) => updateTempo(e.target.value));
+    tempoSlider.addEventListener('input', (e) => updateTempo(e.target.value));
+
+    // 拍号切换
+    document.querySelectorAll('.time-sig-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelector('.time-sig-btn.active').classList.remove('active');
+            btn.classList.add('active');
+            
+            beatsPerMeasure = parseInt(btn.dataset.beats);
+            isEighthNoteBase = btn.dataset.sub === "8";
+            
+            currentBeat = 0;
+            createDots();
+        });
+    });
+
+    startStopBtn.addEventListener('click', () => {
+        initAudio();
+        isRunning = !isRunning;
+
+        if (isRunning) {
+            currentBeat = 0;
+            nextNoteTime = audioCtx.currentTime;
+            startStopBtn.textContent = '停止';
+            startStopBtn.classList.add('running');
+            scheduler();
+        } else {
+            clearTimeout(timerID);
+            startStopBtn.textContent = '开始练习';
+            startStopBtn.classList.remove('running');
+            document.querySelectorAll('.dot').forEach(d => d.className = 'dot');
+        }
+    });
+</script>
+</body>
+</html>
+

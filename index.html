@@ -33,10 +33,10 @@
             width: 340px;
             display: flex;
             flex-direction: column;
-            gap: 20px; /* 统一元素间距，防止重叠 */
+            gap: 20px;
         }
 
-        /* 1. 顶部拍号选择器 */
+        /* 顶部拍号选择器 */
         .menu-bar {
             display: flex;
             background: #f2f2f7;
@@ -63,7 +63,7 @@
             color: var(--primary-color);
         }
 
-        /* 2. 视觉指示器（节拍点） */
+        /* 视觉指示器 */
         .indicator-container {
             display: flex;
             justify-content: center;
@@ -83,21 +83,19 @@
         .dot.active { background: var(--primary-color); transform: scale(1.4); }
         .dot.accent-active { background: #ff9500; transform: scale(1.6); }
 
-        /* 3. 速度显示区域（解决遮挡核心） */
-        .bpm-section {
-            padding: 10px 0;
-        }
+        /* 速度显示区域 */
+        .bpm-section { padding: 10px 0; }
 
         .bpm-display-group {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 15px;
+            gap: 10px;
             margin-bottom: 5px;
         }
 
         #bpmNumber {
-            width: 140px;
+            width: 160px; /* 稍微加宽，容纳三位数 */
             font-size: 4.5rem;
             font-weight: 700;
             border: none;
@@ -108,17 +106,16 @@
             margin: 0;
         }
 
-        /* 移除数字输入框的上下箭头 */
         input::-webkit-outer-spin-button,
         input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
         .stepper-btn {
-            width: 44px;
-            height: 44px;
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
             background: #f2f2f7;
             border: none;
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -126,12 +123,8 @@
             transition: background 0.2s;
         }
 
-        .stepper-btn:active { background: #e5e5ea; }
-
-        /* 4. 滑动条区域（增加间距） */
-        .slider-section {
-            padding: 15px 0;
-        }
+        /* 滑动条区域 */
+        .slider-section { padding: 15px 0; }
 
         input[type="range"] {
             width: 100%;
@@ -139,7 +132,7 @@
             accent-color: var(--primary-color);
         }
 
-        /* 5. 底部按钮 */
+        /* 底部按钮 */
         #startStop {
             background-color: var(--primary-color);
             color: white;
@@ -149,10 +142,8 @@
             font-size: 1.2rem;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.1s, background-color 0.3s;
         }
 
-        #startStop:active { transform: scale(0.98); }
         #startStop.running { background-color: #ff3b30; }
     </style>
 </head>
@@ -170,25 +161,24 @@
 
     <div class="bpm-section">
         <div class="bpm-display-group">
-            <button class="stepper-btn" onclick="adjustBPM(-1)">−</button>
-            <input type="number" id="bpmNumber" value="120" min="40" max="280">
-            <button class="stepper-btn" onclick="adjustBPM(1)">+</button>
+            <button class="stepper-btn" onclick="adjustBPM(-10)">−</button>
+            <input type="number" id="bpmNumber" value="70" min="20" max="300">
+            <button class="stepper-btn" onclick="adjustBPM(10)">+</button>
         </div>
-        <div style="color: var(--text-sec); font-weight: 500;">BPM</div>
+        <div style="color: var(--text-sec); font-weight: 500; letter-spacing: 2px;">BPM</div>
     </div>
 
     <div class="slider-section">
-        <input type="range" id="tempoSlider" min="40" max="280" value="120">
+        <input type="range" id="tempoSlider" min="20" max="300" value="70">
     </div>
 
     <button id="startStop">开始练习</button>
 </div>
 
 <script>
-    // --- 核心逻辑部分保持不变，仅更新交互绑定 ---
     let audioCtx = null;
     let isRunning = false;
-    let tempo = 120;
+    let tempo = 70; // 初始值改为 70
     let beatsPerMeasure = 4;
     let isEighthNoteBase = false;
     let currentBeat = 0;
@@ -211,16 +201,21 @@
     createDots();
 
     function updateTempo(value) {
-        tempo = Math.max(40, Math.min(280, value));
+        // 允许自由输入 20 到 300 之间的数值
+        tempo = Math.max(20, Math.min(300, value));
         bpmNumberInput.value = tempo;
         tempoSlider.value = tempo;
     }
 
-    window.adjustBPM = (delta) => updateTempo(parseInt(tempo) + delta);
+    // 这里将 delta 改为 10，实现每 10 个往上加
+    window.adjustBPM = (delta) => {
+        let current = parseInt(bpmNumberInput.value) || 70;
+        updateTempo(current + delta);
+    };
+
     bpmNumberInput.addEventListener('input', (e) => updateTempo(e.target.value));
     tempoSlider.addEventListener('input', (e) => updateTempo(e.target.value));
 
-    // 音频调度逻辑 (Web Audio API)
     function initAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
@@ -262,7 +257,7 @@
     }
 
     document.querySelectorAll('.time-sig-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', () => {
             document.querySelector('.time-sig-btn.active').classList.remove('active');
             btn.classList.add('active');
             beatsPerMeasure = parseInt(btn.dataset.beats);
